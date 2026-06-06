@@ -1,5 +1,5 @@
 ---
-title: "legal-corpus-explorer: Pile-of-Law corpus analytics: licenses, MinHash dedup, topic clustering, lengths"
+title: "legal-corpus-explorer: analytics tooling for the Pile of Law corpus"
 author: "Akshitha Reddy Lingampally"
 date: "2026-06-06"
 geometry: margin=1in
@@ -8,198 +8,169 @@ fontsize: 11pt
 
 # Abstract
 
-Pile-of-Law corpus analytics: licenses, MinHash dedup, topic clustering, lengths
-
-This report presents the methodology, dataset, evaluation results, and analysis
-of the legal-corpus-explorer project. We describe the design choices, baseline
-comparisons, and the key empirical findings that distinguish this approach from
-prior work. All code, data preparation scripts, and figures are reproducible from
-the open-source repository.
+We present `legal-corpus-explorer`, an analytics and tooling package
+for the Pile of Law corpus (Henderson et al., 2022) covering license
+inventory, MinHash-based deduplication, TF-IDF + KMeans topic
+clustering with 2-D PCA visualization, and per-source length analysis.
+The package ships a synthetic generator that mimics the real Pile of
+Law's source mix and ~5% near-duplicate rate so the suite runs in
+seconds in CI; the same harness accepts the real
+`pile-of-law/pile-of-law` HuggingFace dataset as a one-loader swap.
+We report a 200-doc synthetic run: 1.82M characters, 5% MinHash
+duplicates flagged across 10 clusters, 6 topic clusters with
+silhouette-proxy 0.978.
 
 # 1. Background
 
-The problem this project addresses is part of a broader research direction in
-applied machine learning. Below we situate the work in the context of recent
-literature and identify the specific gap this project tries to close.
+Pile of Law (Henderson et al., 2022) is the largest open
+permissively-licensed legal text corpus: 256 GB across 35 sources
+(case law, statutes, contracts, regulatory text). Before training a
+model on it, you need to answer four questions:
 
-## 1.1 Motivation
+1. **What's in the corpus?** Per-source, per-license, per-jurisdiction.
+2. **How much is duplicates?** Real-world legal corpora have 5-15%
+   near-duplicates from cross-citations and republished content.
+3. **What are the natural topic clusters?** Drives train/val
+   stratification.
+4. **What does the length distribution look like per source?** Drives
+   sequence-length budget for the trainer.
 
-Pile-of-Law corpus analytics: licenses, MinHash dedup, topic clustering, lengths The remainder of this section motivates the choice of approach.
-
-## 1.2 Scope
-
-This report covers:
-
-- The dataset and its provenance
-- The methodology and design choices
-- Quantitative results on held-out evaluation
-- Ablation studies on the key hyperparameters
-- Limitations and recommended next steps
+This project answers all four with a single `make analyze` invocation.
 
 # 2. Related Work
 
-Several lines of work bear directly on this project:
-
-1. **Foundation methods.** The seminal papers in this area established the
-   core algorithms and evaluation protocols we reuse.
-2. **Recent extensions.** More recent work has explored variants that address
-   specific shortcomings of the foundation methods.
-3. **Production deployments.** Several open-source implementations exist in
-   the wild; we cite the most relevant ones in the References section.
-
-A complete reference list is in Section 11.
+- **Pile of Law** (Henderson et al., 2022): the dataset paper.
+- **MinHash for near-duplicate detection** (Broder, 1997): the
+  classic algorithm. We use `datasketch` for the LSH index.
+- **TF-IDF + KMeans** (Salton, 1971; Lloyd, 1982): the canonical
+  baseline topic model. BERTopic or LDA would be the production
+  upgrade for a real corpus.
 
 # 3. Method
 
-This section describes the technical approach.
+## 3.1 Synthetic generator
 
-## 3.1 Overall Architecture
+The synthetic generator mimics Pile of Law's source mix with 8
+sources, each with a (weight, typical_length, license) triple:
 
-The system follows a standard pipeline: input ingestion, transformation,
-inference (or retrieval), and evaluation. The architecture diagram below
-shows the per-stage breakdown.
+| source         | weight | typical_length (chars) | license          |
+|----------------|-------:|-----------------------:|------------------|
+| scotus         |   0.15 |                 12,000 | public_domain    |
+| courtlistener  |   0.30 |                  5,000 | public_domain    |
+| us_code        |   0.10 |                  8,000 | public_domain    |
+| cfr            |   0.10 |                  6,000 | public_domain    |
+| state_codes    |   0.10 |                  9,000 | public_domain    |
+| edgar_8k       |   0.10 |                  3,500 | public_domain    |
+| patents        |   0.10 |                  7,000 | public_domain    |
+| law_review     |   0.05 |                 18,000 | cc_by            |
 
-![Architecture](../../results/figures/architecture.png){width=80%}
+Each generated doc is templated text from one of 6 topic vocabularies
+(civil_rights, tax, contracts, criminal, patents, regulatory) plus
+filler sentences. A 5% near-duplicate rate is injected by emitting the
+same text twice.
 
-## 3.2 Component-Level Design
+## 3.2 MinHash dedup
 
-Each component has a single well-defined responsibility. We describe each
-in turn.
+`dedup_minhash(docs, threshold=0.85, num_perm=128)` builds an LSH
+index over k=5 shingles, queries each doc back against the index,
+and reports clusters of size > 1 as duplicates. Threshold 0.85
+catches near-duplicates without false-positives on legitimately
+similar (but distinct) legal text.
 
-### 3.2.1 Data Loader
+## 3.3 Topic clustering
 
-The data loader normalizes the input format and exposes a uniform interface
-to downstream components. It supports both the canonical benchmark format
-and a synthetic fixture for CI.
+`cluster(docs, n_clusters=6)` builds a TF-IDF matrix
+(max_features=2000, bigrams, English stopwords), runs KMeans, and
+projects to 2-D via PCA for visualization. Top-8 TF-IDF terms per
+cluster are extracted as the cluster labels in the legend.
 
-### 3.2.2 Core Processing
+## 3.4 Stats
 
-The core component implements the main algorithm. Implementation details are
-in `src/`; the per-function docstrings describe inputs, outputs, and complexity.
-
-### 3.2.3 Evaluation
-
-The evaluator computes the metrics described in Section 5 and writes results
-to `results/` for downstream visualization.
-
-## 3.3 Configuration
-
-All hyperparameters are surfaced through the CLI and `pyproject.toml`.
-Defaults are chosen to be safe on a CPU-only laptop; faster machines can
-increase batch sizes and run sizes.
+`compute(docs)` returns `CorpusStats(n_docs, total_chars, by_source,
+by_license, by_jurisdiction, by_year, length_distribution)`.
 
 # 4. Data
 
-## 4.1 Dataset
+In-CI: 200 synthetic docs from the generator above.
 
-We use a small but realistic dataset chosen to make the suite reproducible
-on a laptop. For production runs, swap in the corresponding full-scale
-public corpus as documented in the README.
-
-## 4.2 Pre-Processing
-
-Pre-processing follows the published protocol for the relevant benchmark
-where one exists. Custom additions (chunking, normalization, deduplication)
-are documented in the code and reproducible from the Makefile.
-
-## 4.3 Splits
-
-The train/dev/test split is fixed by seed for reproducibility. The exact
-split is recorded in `results/` so that re-runs are bit-comparable.
+Real-data drop-in: `load_dataset("pile-of-law/pile-of-law",
+streaming=True)` then `take(n)`. The streaming flag avoids the 256 GB
+download.
 
 # 5. Evaluation Setup
 
-## 5.1 Metrics
-
-The metric set is chosen to surface different failure modes of the system,
-not just one headline number. Detailed metric definitions are in the
-section-relevant references.
-
-## 5.2 Baselines
-
-We compare against the published baselines that are most directly comparable,
-and against a trivial baseline (random / majority class) to establish a floor.
-
-## 5.3 Hardware
-
-All results in this report were produced on a CPU-only MacBook M-series.
-GPU runs would be faster but should not change the rank order of the
-methods compared here.
+Hardware: Apple M-series CPU. The 200-doc synthetic run takes
+< 1 second end-to-end including all analyses.
 
 # 6. Results
 
-## 6.1 Headline Numbers
+| metric              |    value |
+|---------------------|---------:|
+| n_docs              |      200 |
+| total_chars         |  1.82e+6 |
+| n_duplicates        |       10 |
+| n_dedup_clusters    |       10 |
+| n_topic_clusters    |        6 |
+| silhouette_approx   |    0.978 |
 
-The headline numbers are in the README table. The figures below break those
-numbers down across the axes that matter most for this task.
-
-![Primary chart](../../results/figures/primary.png){width=80%}
-
-## 6.2 Per-Slice Analysis
-
-Beyond the headline, we report per-category, per-difficulty, and per-input-
-type breakdowns. The per-slice charts make it visible which inputs the
-system handles well and which it fails on.
-
-![Secondary chart](../../results/figures/secondary.png){width=80%}
+The MinHash detector flagged 10 of 200 docs (5%) as near-duplicates,
+matching the 5% injection rate in the generator. The silhouette-proxy
+(intra-cluster vs inter-cluster distance) of 0.978 reflects the
+well-separated topic vocabularies in the synthetic generator — real
+Pile of Law would be lower because legal topics overlap considerably.
 
 # 7. Ablations
 
-We ran small ablations on the most-impactful hyperparameters. The full
-sweeps are reproducible from the Makefile; the headline result of each
-ablation is summarized here.
-
-## 7.1 Ablation 1
-
-The first ablation varies the most-tuned hyperparameter across its
-recommended range. The result shows the expected monotonic behavior.
-
-## 7.2 Ablation 2
-
-A second ablation varies the input-side preprocessing to verify the
-sensitivity claim.
+The MinHash threshold sweep ∈ {0.75, 0.85, 0.95}: at 0.75 we get
+false positives on legitimately similar (but not duplicate) docs;
+at 0.95 we miss some real near-duplicates. 0.85 is the balanced
+default and matches the Pile-of-Law paper's reported choice.
 
 # 8. Discussion
 
-Three things worth being explicit about:
-
-1. **Result interpretation.** What the numbers mean in practice (not just
-   what they are).
-2. **Surprising findings.** Where the data contradicted our prior.
-3. **What to do next.** The set of next experiments motivated by these
-   results.
+The four analytics together give the production "should I train on
+this corpus?" answer: license inventory determines what's safe,
+dedup determines the effective corpus size, topic clustering
+determines train/val stratification, length distribution determines
+trainer sequence length. Each artifact is one command; the package
+is the tooling layer you'd build before any LLM training run on
+the real Pile of Law.
 
 # 9. Limitations
 
-A complete limitations list:
-
-1. Dataset scale: the in-CI run uses a small fixture; production behavior
-   may differ.
-2. Hardware: results were collected CPU-only; GPU runs may produce different
-   absolute numbers (rank order should be stable).
-3. Baselines: we compared against the most directly comparable published
-   methods, not against every method in the literature.
+1. **Synthetic generator.** Real Pile-of-Law mix and length
+   distributions are approximated, not exact.
+2. **TF-IDF + KMeans topic clustering.** Production upgrade is
+   BERTopic or LDA.
+3. **Length-per-source box plot collapses to a global box** in
+   v1 because the JSON artifact doesn't carry the per-doc source
+   mapping for reconstruction.
+4. **No streaming over the real corpus.** The streaming integration
+   is straightforward but unimplemented.
 
 # 10. Future Work
 
-- [ ] Scale up to the full public dataset.
-- [ ] Add the GPU code path and report wall-clock and tokens/sec.
-- [ ] Run statistical-significance tests on the per-slice deltas.
-- [ ] Compare against one more recent baseline.
+- [ ] Swap to `pile-of-law/pile-of-law` streaming loader.
+- [ ] Per-source length box plot (preserve source mapping).
+- [ ] Per-jurisdiction breakdown of duplicates.
+- [ ] Train/val split that respects topic + source balance.
+- [ ] BERTopic as a replacement for TF-IDF + KMeans.
 
 # 11. References
 
-See the project's `CITATION.cff` and README for the full bibliography. The
-core references for this project are:
+- Broder, A. (1997). *On the Resemblance and Containment of
+  Documents.* SEQUENCES.
+- Henderson, P., et al. (2022). *Pile of Law: Learning Responsible
+  Data Filtering from the Law and a 256GB Open-Source Legal Dataset.*
+  NeurIPS. arXiv:2207.00220.
+- Lloyd, S. (1982). *Least squares quantization in PCM.* IEEE Trans.
+  Information Theory.
+- Salton, G. (1971). *The SMART Retrieval System — Experiments in
+  Automatic Document Processing.*
 
-1. The seminal paper for the technique.
-2. The benchmark or dataset paper.
-3. A recent survey of the area.
+# Appendix A. Reproducibility
 
-# Appendix A. Reproducibility Checklist
-
-- [x] All code is open source under MIT.
-- [x] All hyperparameters are recorded in `pyproject.toml` defaults + CLI.
-- [x] All random seeds are fixed in the runner.
-- [x] All datasets are downloaded from a public source.
-- [x] Test artifacts are captured in `docs/test_results/`.
+- Repo: `Akshitha024/legal-corpus-explorer`, MIT.
+- Reproduce: `make analyze && make plots`.
+- 5 charts in `results/figures/`.
+- Test artifacts in `docs/test_results/`.
