@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.0.3, pluggy-1.6.0
+rootdir: /Users/mani/Projects/akshitha-portfolio/projects/pile-of-law-explorer
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.1.0
+collected 7 items
+
+tests/test_dedup.py ..                                                   [ 28%]
+tests/test_stats.py .                                                    [ 42%]
+tests/test_synthetic.py ....                                             [100%]
+
+============================== 7 passed in 1.98s ===============================

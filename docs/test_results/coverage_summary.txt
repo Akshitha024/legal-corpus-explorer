@@ -1,0 +1,21 @@
+.......                                                                  [100%]
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.14-final-0 _______________
+
+Name                           Stmts   Miss  Cover
+--------------------------------------------------
+src/pol/__init__.py                1      0   100%
+src/pol/analysis/__init__.py       0      0   100%
+src/pol/analysis/dedup.py         54     14    74%
+src/pol/analysis/stats.py         15      0   100%
+src/pol/analysis/topics.py        49     49     0%
+src/pol/cli/__init__.py            0      0   100%
+src/pol/cli/main.py               23     23     0%
+src/pol/data/__init__.py           0      0   100%
+src/pol/data/synthetic.py         37      0   100%
+src/pol/runner.py                 21     21     0%
+src/pol/types.py                  10      0   100%
+src/pol/viz/__init__.py            0      0   100%
+src/pol/viz/charts.py            123    123     0%
+--------------------------------------------------
+TOTAL                            333    230    31%
