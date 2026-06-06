@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+title: pol — Pile of Law corpus explorer
+authors:
+  - family-names: Lingampally
+    given-names: Akshitha Reddy
+type: software
+date-released: 2024-06-04
+repository-code: https://github.com/Akshitha024/pile-of-law-explorer
+license: MIT
+references:
+  - type: article
+    title: "Pile of Law: Learning Responsible Data Filtering from the Law and a 256GB Open-Source Legal Dataset"
+    authors: [{family-names: Henderson, given-names: Peter}]
+    year: 2022
+    url: https://arxiv.org/abs/2207.00220
