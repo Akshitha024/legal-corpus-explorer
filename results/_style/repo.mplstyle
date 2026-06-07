@@ -1,0 +1,21 @@
+# Library Stacks palette for this repo. Re-rendered charts pick this up.
+axes.facecolor: #FAF0E6
+figure.facecolor: #FAF0E6
+axes.edgecolor: #1c1c1c
+axes.labelcolor: #1c1c1c
+axes.titlecolor: #1c1c1c
+axes.titleweight: bold
+xtick.color: #1c1c1c
+ytick.color: #1c1c1c
+grid.color: #D9C18C
+grid.alpha: 0.5
+axes.grid: True
+axes.spines.top: False
+axes.spines.right: False
+axes.prop_cycle: cycler('color', [#594F3B, #A99A6B, #D9C18C, #735F32, #6B4226, #8E2D24])
+font.family: sans-serif
+font.sans-serif: Helvetica, Arial, DejaVu Sans
+font.size: 10
+figure.titlesize: 14
+figure.titleweight: bold
+image.cmap: afmhot
